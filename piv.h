@@ -493,7 +493,7 @@ errf_t *piv_read_all_certs(struct piv_token *tk);
  *  - APDUError: the card rejected the command
  */
 MUST_CHECK
-errf_t *piv_auth_admin(struct piv_token *tk, const uint8_t *key, size_t keylen);
+errf_t *piv_auth_admin(struct piv_token *tk, const uint8_t *key, size_t keylen, size_t keyalg);
 
 /*
  * YubicoPIV-specific: changes the 3DES card administrator key.

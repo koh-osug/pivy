@@ -82,7 +82,10 @@ static const uint8_t DEFAULT_ADMIN_KEY[] = {
 	0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 	0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 };
+#define DEFAULT_KEY_LENGTH 24
 static const uint8_t *admin_key = DEFAULT_ADMIN_KEY;
+static int key_length = DEFAULT_KEY_LENGTH;
+static int key_alg = PIV_ALG_3DES;
 
 static enum ykpiv_pin_policy pinpolicy = YKPIV_PIN_DEFAULT;
 static enum ykpiv_touch_policy touchpolicy = YKPIV_TOUCH_DEFAULT;
@@ -605,7 +608,7 @@ save_pinfo_admin_key(struct piv_token *tk)
 	tlv = tlv_init_write();
 	tlv_push(tlv, 0x88);
 	tlv_push(tlv, 0x89);
-	tlv_write(tlv, admin_key, 24);
+	tlv_write(tlv, admin_key, key_length);
 	tlv_pop(tlv);
 	tlv_pop(tlv);
 
@@ -648,7 +651,7 @@ again:
 						goto out;
 					if ((err = tlv_end(tlv)))
 						goto out;
-					if (keylen == 24) {
+					if (keylen == 24 || keylen == 16 || keylen == 32) {
 						admin_key = key;
 						err = ERRF_OK;
 					} else {
@@ -719,7 +722,7 @@ cmd_update_keyhist(void)
 	url = piv_token_offcard_url(selk);
 
 admin_again:
-	err = piv_auth_admin(selk, admin_key, 24);
+	err = piv_auth_admin(selk, admin_key, key_length, key_alg);
 	if (err && errf_caused_by(err, "PermissionError") &&
 	    admin_key == DEFAULT_ADMIN_KEY) {
 		errf_free(err);
@@ -827,7 +830,7 @@ cmd_init(void)
 		return (err);
 	assert_select(selk);
 admin_again:
-	err = piv_auth_admin(selk, admin_key, 24);
+	err = piv_auth_admin(selk, admin_key, key_length, key_alg);
 	if (err && errf_caused_by(err, "PermissionError") &&
 	    admin_key == DEFAULT_ADMIN_KEY) {
 		errf_free(err);
@@ -878,7 +881,7 @@ cmd_set_admin(uint8_t *new_admin_key)
 		return (err);
 	assert_select(selk);
 admin_again:
-	err = piv_auth_admin(selk, admin_key, 24);
+	err = piv_auth_admin(selk, admin_key, key_length, key_alg);
 	if (err && errf_caused_by(err, "PermissionError") &&
 	    admin_key == DEFAULT_ADMIN_KEY) {
 		errf_free(err);
@@ -889,7 +892,7 @@ admin_again:
 	if (err) {
 		err = funcerrf(err, "Failed to authenticate with old admin key");
 	} else {
-		err = ykpiv_set_admin(selk, new_admin_key, 24, touchpolicy);
+		err = ykpiv_set_admin(selk, new_admin_key, key_length, touchpolicy);
 		if (err) {
 			err = funcerrf(err, "Failed to set new admin key");
 		}
@@ -1437,7 +1440,7 @@ cmd_import(uint slotid)
 		return (err);
 	assert_select(selk);
 admin_again:
-	err = piv_auth_admin(selk, admin_key, 24);
+	err = piv_auth_admin(selk, admin_key, key_length, key_alg);
 	if (err && errf_caused_by(err, "PermissionError") &&
 	    admin_key == DEFAULT_ADMIN_KEY) {
 		errf_free(err);
@@ -1501,7 +1504,7 @@ cmd_generate(uint slotid, enum piv_alg alg)
 		return (err);
 	assert_select(selk);
 admin_again:
-	err = piv_auth_admin(selk, admin_key, 24);
+	err = piv_auth_admin(selk, admin_key, key_length, key_alg);
 	if (err && errf_caused_by(err, "PermissionError") &&
 	    admin_key == DEFAULT_ADMIN_KEY) {
 		errf_free(err);
@@ -2368,11 +2371,11 @@ again9d:
 	if ((err = cmd_change_pin(PIV_PUK)))
 		return (err);
 
-	fprintf(stderr, "Generating final admin 3DES key...\n");
-	uint8_t *admin_key = malloc(24);
+	fprintf(stderr, "Generating final admin key...\n");
+	uint8_t *admin_key = malloc(key_length);
 	char *hex;
 	VERIFY(admin_key != NULL);
-	arc4random_buf(admin_key, 24);
+	arc4random_buf(admin_key, key_length);
 	if (usetouch)
 		touchpolicy = YKPIV_TOUCH_ALWAYS;
 
@@ -2380,8 +2383,8 @@ again9d:
 		return (err);
 
 	if (!save_pinfo_admin) {
-		hex = buf_to_hex(admin_key, 24, B_FALSE);
-		printf("Admin 3DES key: %s\n", hex);
+		hex = buf_to_hex(admin_key, key_length, B_FALSE);
+		printf("Admin key: %s\n", hex);
 	}
 
 	fprintf(stderr, "Done!\n");
@@ -2423,7 +2426,7 @@ usage(void)
 	    "  factory-reset          Factory reset the PIV applet on a\n"
 	    "                         Yubikey, once the PIN and PUK are both\n"
 	    "                         locked (max retries used)\n"
-	    "  set-admin <hex|@file>  Sets the admin 3DES key\n"
+	    "  set-admin <hex|@file>  Sets the admin key\n"
 	    "  update-keyhist         Scan all retired key slots and then\n"
 	    "                         re-generate the PIV Key History object\n"
 	    "\n"
@@ -2448,10 +2451,13 @@ usage(void)
 	    "  -f                     Attempt to unlock with PIN code even\n"
 	    "                         if there is only 1 attempt left before\n"
 	    "                         card lock\n"
-	    "  -K <hex|@file>         Provides the admin 3DES key to use for\n"
+	    "  -K <hex|@file>         Provides the admin key to use for\n"
 	    "                         auth to the card with admin ops (e.g.\n"
 	    "                         generate or init)\n"
-	    "  -d                     Output debug info to stderr\n"
+		"  -l <key length>        The key length of the admin key\n"
+		"  -A <key type>          The key algorithm (3des, aes128, aes192 \n"
+		"                         or aes256) of the admin key\n"
+		"  -d                     Output debug info to stderr\n"
 	    "                         (use twice to include APDU trace)\n"
 	    "  -X                     Always enumerate all retired key slots\n"
 	    "                         (ignore the PIV Key History object)\n"
@@ -2493,7 +2499,7 @@ usage(void)
     "f(force)"
     "K:(admin-key)"
     "k:(key)";*/
-const char *optstring = "dpg:P:a:fK:k:n:t:i:u:RX";
+const char *optstring = "dpg:P:a:fK:k:n:t:i:u:RXl:A:";
 
 int
 main(int argc, char *argv[])
@@ -2526,12 +2532,29 @@ main(int argc, char *argv[])
 		case 'X':
 			enum_all_retired = B_TRUE;
 			break;
+		case 'l':
+			key_length = atoi(optarg);
+			break;
+		case 'A':
+			if (strcasecmp(optarg, "3des") == 0) {
+				key_alg = PIV_ALG_3DES;
+			} else if (strcasecmp(optarg, "aes128") == 0) {
+				key_alg = PIV_ALG_AES128;
+			} else if (strcasecmp(optarg, "aes192") == 0) {
+				key_alg = PIV_ALG_AES192;
+			} else if (strcasecmp(optarg, "aes256") == 0) {
+				key_alg = PIV_ALG_AES256;
+			} else {
+				errx(EXIT_BAD_ARGS, "invalid algorithm: '%s'",
+					optarg);
+			}
+			break;
 		case 'K':
 			if (strcmp(optarg, "default") == 0) {
 				admin_key = DEFAULT_ADMIN_KEY;
 			} else if (optarg[0] == '@') {
 				buf = read_key_file(&optarg[1], &len);
-				if (len > 24 && sniff_hex(buf, len)) {
+				if (len > key_length && sniff_hex(buf, len)) {
 					admin_key = parse_hex(
 					    (const char *)buf, &len);
 				} else {
@@ -2540,9 +2563,9 @@ main(int argc, char *argv[])
 			} else {
 				admin_key = parse_hex(optarg, &len);
 			}
-			if (len != 24) {
+			if (len != 24 && len != 16 && len != 32) {
 				errx(EXIT_BAD_ARGS, "admin key must be "
-				    "24 bytes in length (%d given)", len);
+				    "16, 24 or 32 bytes in length (%d given)", len);
 			}
 			break;
 		case 'u':
@@ -2677,15 +2700,15 @@ main(int argc, char *argv[])
 
 		if (strcmp(argv[optind], "default") == 0) {
 			new_admin = (uint8_t *)DEFAULT_ADMIN_KEY;
-			len = 24;
+			len = key_length;
 		} else if (strcmp(argv[optind], "random") == 0) {
-			new_admin = malloc(24);
+			new_admin = malloc(key_length);
 			VERIFY(new_admin != NULL);
-			arc4random_buf(new_admin, 24);
-			len = 24;
+			arc4random_buf(new_admin, key_length);
+			len = key_length;
 		} else if (argv[optind][0] == '@') {
 			buf = read_key_file(&argv[optind][1], &len);
-			if (len > 24 && sniff_hex(buf, len)) {
+			if (len > key_length && sniff_hex(buf, len)) {
 				new_admin = parse_hex(
 				    (const char *)buf, &len);
 			} else {
@@ -2700,9 +2723,9 @@ main(int argc, char *argv[])
 			usage();
 		}
 
-		if (len != 24) {
-			errx(EXIT_BAD_ARGS, "admin key must be 24 bytes in "
-			    "length (%d given)", len);
+		if (len != key_length) {
+			errx(EXIT_BAD_ARGS, "admin key must be %d bytes in "
+			    "length (%d given)", key_length, len);
 		}
 		check_select_key();
 		err = cmd_set_admin(new_admin);

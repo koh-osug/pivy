@@ -1003,8 +1003,8 @@ again:
 		err = errfno("getpass", errno, "");
 		return (err);
 	}
-	if (strlen(p) < 6 || strlen(p) > 8) {
-		warnx("PIN must be 6-8 %s", charType);
+	if (strlen(p) < 4 || strlen(p) > 8) {
+		warnx("PIN must be 4-8 %s", charType);
 		goto again;
 	}
 	newpin = strdup(p);
@@ -1070,8 +1070,8 @@ again:
 		err = errfno("getpass", errno, "");
 		return (err);
 	}
-	if (strlen(p) < 6 || strlen(p) > 8) {
-		warnx("PIN must be 6-8 %s", charType);
+	if (strlen(p) < 4 || strlen(p) > 8) {
+		warnx("PIN must be 4-8 %s", charType);
 		goto again;
 	}
 	newpin = strdup(p);
